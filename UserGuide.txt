@@ -1,0 +1,26 @@
+DATA:
+    1. File (.cgns) -> f
+    2. Mesh{} -> M
+    3. Flow Variables{} -> U
+
+OPERATIONS:
+    1. Main Classes:
+        1. PreProcessor
+            -> CGNSReader(f,M) -> M
+            -> ConstructFaces(M) -> M
+            -> VerifyMesh(M) -> M
+            -> CreateFlowField(M, U)
+        2. Solver
+            -> ApplyBoundaryConditions()
+            -> Initialize(M, U)
+            -> LoopTime(M, U0, U, O) -> U
+            -> PlotResiduals(U)
+        3. PostProcessor
+            -> ExportSolutionData(M,U)
+OUTPUT:
+    1. On the Terminal/Screen
+        1. Print Mesh details
+        2. Live Residual Monitor
+    2. Files
+        1. Solution Data (.cgns)
+
