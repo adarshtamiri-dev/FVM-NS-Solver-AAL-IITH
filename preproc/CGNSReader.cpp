@@ -1,5 +1,5 @@
 #include "cgnslib.h"
-#include "../PreProcessor.h"
+#include "PreProcessor.h"
 
 bool PreProcessor::CGNSReader(const std::string& filename, Mesh& mesh) {
     int file_index = 0; 
