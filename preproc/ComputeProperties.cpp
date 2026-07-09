@@ -4,28 +4,43 @@
 #include <iostream>
 
 void PreProcessor::ComputeProperties(Mesh& mesh) {
-    int num_cells = static_cast<int>(mesh.cell_type.size());
+    int64_t num_cells = static_cast<int64_t>(mesh.cell_type.size());
 
-    // 1. Allocate space for cell properties
+    // 1. Allocate space using modern 64-bit index limits matching our updated SoA Mesh
     mesh.cell_volume.assign(num_cells, 0.0);
     mesh.cell_center_x.assign(num_cells, 0.0);
     mesh.cell_center_y.assign(num_cells, 0.0);
     mesh.cell_center_z.assign(num_cells, 0.0);
 
-    // 2. Loop through every cell to compute volume and centers using the Divergence Theorem
-    for (int c = 0; c < num_cells; ++c) {
-        int face_start = mesh.cell_faces_offsets[c];
-        int face_end = mesh.cell_faces_offsets[c + 1];
+    // 2. Loop through cells using sub-pyramid decomposition (Highly robust for all unstructured shapes)
+    for (int64_t c = 0; c < num_cells; ++c) {
+        int64_t face_start = mesh.cell_faces_offsets[c];
+        int64_t face_end = mesh.cell_faces_offsets[c + 1];
 
-        double vol_accumulator = 0.0;
-        double cx_accumulator = 0.0;
-        double cy_accumulator = 0.0;
-        double cz_accumulator = 0.0;
+        // Step A: Calculate a temporary local anchor point to use as a virtual apex.
+        // The arithmetic mean of face centers works perfectly and keeps numbers stable.
+        double ax = 0.0, ay = 0.0, az = 0.0;
+        int64_t num_cell_faces = face_end - face_start;
+        
+        for (int64_t i = face_start; i < face_end; ++i) {
+            int64_t f = mesh.cell_faces[i];
+            ax += mesh.face_center_x[f];
+            ay += mesh.face_center_y[f];
+            az += mesh.face_center_z[f];
+        }
+        if (num_cell_faces > 0) {
+            ax /= num_cell_faces; ay /= num_cell_faces; az /= num_cell_faces;
+        }
 
-        for (int i = face_start; i < face_end; ++i) {
-            int f = mesh.cell_faces[i];
+        double total_volume = 0.0;
+        double cx_weighted = 0.0;
+        double cy_weighted = 0.0;
+        double cz_weighted = 0.0;
 
-            // Extract face geometry
+        // Step B: Integrate sub-pyramids formed by each face and the anchor apex
+        for (int64_t i = face_start; i < face_end; ++i) {
+            int64_t f = mesh.cell_faces[i];
+
             double af = mesh.face_area[f];
             double fx = mesh.face_center_x[f];
             double fy = mesh.face_center_y[f];
@@ -35,9 +50,7 @@ void PreProcessor::ComputeProperties(Mesh& mesh) {
             double ny = mesh.face_normal_y[f];
             double nz = mesh.face_normal_z[f];
 
-            // Check orientation: The normal must point OUTWARD from the current cell.
-            // By convention, face_normals point from owner to neighbor.
-            // If this cell is the neighbor, we flip the normal direction sign.
+            // Orient normal outward relative to the cell container boundary
             double sign = 1.0;
             if (mesh.face_neighbour_cell_index[f] == c) {
                 sign = -1.0;
@@ -47,36 +60,38 @@ void PreProcessor::ComputeProperties(Mesh& mesh) {
             double oriented_ny = ny * sign;
             double oriented_nz = nz * sign;
 
-            // Dot product: x_face_center · n_oriented
-            double dot_product = (fx * oriented_nx) + (fy * oriented_ny) + (fz * oriented_nz);
+            // Height of pyramid = projection of vector (face_center - anchor) onto oriented face normal
+            double h = ((fx - ax) * oriented_nx) + 
+                       ((fy - ay) * oriented_ny) + 
+                       ((fz - az) * oriented_nz);
 
-            // Accumulate Volumetric Component
-            // V = 1/3 * sum( (xf · n) * Area )
-            double face_vol_contribution = dot_product * af;
-            vol_accumulator += face_vol_contribution;
+            // Volume of a pyramid = (Base Area * Height) / 3
+            double pyramid_vol = (af * h) / 3.0;
 
-            // Accumulate Centroid Components
-            // x_c = 1/(4V) * sum( xf * (xf · n) * Area )
-            cx_accumulator += fx * face_vol_contribution;
-            cy_accumulator += fy * face_vol_contribution;
-            cz_accumulator += fz * face_vol_contribution;
+            // Centroid of a pyramid is located exactly 3/4 of the way from the apex to the face base center
+            double pyr_cx = ax + 0.75 * (fx - ax);
+            double pyr_cy = ay + 0.75 * (fy - ay);
+            double pyr_cz = az + 0.75 * (fz - az);
+
+            // Accumulate volume-weighted properties
+            total_volume += pyramid_vol;
+            cx_weighted  += pyr_cx * pyramid_vol;
+            cy_weighted  += pyr_cy * pyramid_vol;
+            cz_weighted  += pyr_cz * pyramid_vol;
         }
 
-        // Finalize cell calculations
-        double total_volume = vol_accumulator / 3.0;
-
+        // Finalize cell data metrics
         if (total_volume > 1e-15) {
-            mesh.cell_volume[c] = total_volume;
-            mesh.cell_center_x[c] = cx_accumulator / (4.0 * total_volume);
-            mesh.cell_center_y[c] = cy_accumulator / (4.0 * total_volume);
-            mesh.cell_center_z[c] = cz_accumulator / (4.0 * total_volume);
+            mesh.cell_volume[c]   = total_volume;
+            mesh.cell_center_x[c] = cx_weighted / total_volume;
+            mesh.cell_center_y[c] = cy_weighted / total_volume;
+            mesh.cell_center_z[c] = cz_weighted / total_volume;
         } else {
-            std::cerr << "Warning: Cell " << c << " has an invalid or zero volume (" << total_volume << ").\n";
-            mesh.cell_volume[c] = 0.0;
-            mesh.cell_center_x[c] = 0.0;
-            mesh.cell_center_y[c] = 0.0;
-            mesh.cell_center_z[c] = 0.0;
+            std::cerr << "Warning: Cell " << c << " has an invalid or near-zero volume (" << total_volume << ").\n";
+            mesh.cell_volume[c]   = 0.0;
+            mesh.cell_center_x[c] = ax; // Fallback to anchor position
+            mesh.cell_center_y[c] = ay;
+            mesh.cell_center_z[c] = az;
         }
     }
-
 }
