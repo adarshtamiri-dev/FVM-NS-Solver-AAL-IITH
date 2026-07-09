@@ -42,7 +42,6 @@ void PreProcessor::GenerateFaceData(Mesh& mesh) {
     std::unordered_map<std::vector<int64_t>, FaceMatchData, FaceHash64> face_registry; 
     int64_t face_counter = 0; 
 
-    // 1. [SAME AS YOURS] Lambda to get local faces from 3D cells
     auto get_local_faces = [](int cell_type, const std::vector<int64_t>& cell_nodes_list) -> std::vector<std::vector<int64_t>> {
         if (cell_type == 0) { // TETRA_4
             return {
@@ -94,7 +93,7 @@ void PreProcessor::GenerateFaceData(Mesh& mesh) {
         boco_elements_lookup[boco_nodes] = mesh.boco_elements_global_start + e;
     }
 
-    // 3. [SAME AS YOURS] Populate the Face Registry from 3D Cells
+    // 3. Populate the Face Registry from 3D Cells
     for (int64_t c = 0; c < num_cells; ++c) {
         int64_t start_idx = mesh.cell_nodes_offsets[c]; 
         int64_t end_idx = mesh.cell_nodes_offsets[c + 1]; 
@@ -189,7 +188,7 @@ void PreProcessor::GenerateFaceData(Mesh& mesh) {
 
     int64_t total_faces = static_cast<int64_t>(ordered_faces.size());
 
-    // 6. [SAME AS YOURS] Populate Flat Mesh Fields, Calculate Newell Normals & Area Metas
+    // 6. Populate Flat Mesh Fields, Calculate Newell Normals & Area Metas
     mesh.face_owner_cell_index.resize(total_faces); 
     mesh.face_neighbour_cell_index.resize(total_faces); 
     mesh.face_area.resize(total_faces); 
@@ -234,7 +233,6 @@ void PreProcessor::GenerateFaceData(Mesh& mesh) {
         }
     }
 
-    // 7. [SAME AS YOURS] Finalize cell_faces CSR Arrays mapping updates
     mesh.cell_faces_offsets.resize(num_cells + 1, 0); 
     int64_t current_cf_offset = 0; 
     for (int64_t c = 0; c < num_cells; ++c) {
