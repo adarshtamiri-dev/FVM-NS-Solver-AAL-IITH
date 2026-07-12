@@ -5,6 +5,8 @@ project(Meshing_Phase)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(CGNS_ROOT ${CMAKE_SOURCE_DIR}/preproc/cgns)
+set(CMAKE_PREFIX_PATH ${CGNS_PREFIX_PATH} ${CGNS_ROOT})
 
 find_package(CGNS REQUIRED)
 find_package(HDF5 REQUIRED COMPONENTS C)
@@ -21,13 +23,6 @@ preproc/ComputeProperties.cpp
 preproc/VerifyMesh.cpp
 
 )
-
-add_executable(LAB_SOLVERv1 ${SOURCES})
-
-
-target_include_directories(LAB_SOLVERv1 PRIVATE /opt/opt/homebrew/include ${CGNS_INCLUDE_DIRS} ${HDF5_INCLUDE_DIRS} .)
-target_link_directories(LAB_SOLVERv1 PRIVATE /opt/homebrew/lib)
-
-target_link_libraries(LAB_SOLVERv1 cgns hdf5 z ${CGNS_LIBRARIES} ${HDF5_LIBRARIES}
-
-)
+add_executable(LAB_SOLVERv1 main.cpp)
+target_include_directories(LAB_SOLVERv1 PRIVATE ${CGNS_INCLUDE_DIRS})
+target_link_libraries(LAB_SOLVERv1 PRIVATE ${CGNS_LIBRARIES})
